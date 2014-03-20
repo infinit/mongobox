@@ -32,7 +32,8 @@ START_CHECK_ATTEMPTS = 200
 class MongoBox(object):
     def __init__(self, mongod_bin=None, port=None,
                  log_path=None, db_path=None, scripting=False,
-                 prealloc=False, auth=False):
+                 prealloc=False, auth=False,
+                 dump_file=None):
 
         self.mongod_bin = mongod_bin or find_executable(MONGOD_BIN)
         assert self.mongod_bin, 'Could not find "{}" in system PATH. Make sure you have MongoDB installed.'.format(MONGOD_BIN)
@@ -43,6 +44,7 @@ class MongoBox(object):
         self.prealloc = prealloc
         self.db_path = db_path
         self.auth = auth
+        self.dump_file = dump_file
 
         if self.db_path:
             if os.path.exists(self.db_path) and os.path.isfile(self.db_path):
@@ -86,7 +88,19 @@ class MongoBox(object):
             stderr=subprocess.STDOUT
         )
 
-        return self._wait_till_started()
+        ok = self._wait_till_started()
+        if ok and self.dump_file:
+          output_file = tempfile.NamedTemporaryFile(mode = 'w+', delete = False)
+          subprocess.check_call(['mongorestore',
+                                 '--port', str(self.port), self.dump_file],
+                                stdout = output_file)
+          output_file.seek(0)
+          output = output_file.readlines()
+          errs = filter(lambda e: 'ERROR' in e, output)
+          errs = list(errs)
+          if len(errs):
+            raise Exception('mongorestore errors:' + '\n'.join(errs))
+        return ok
 
     def stop(self):
         if not self.process:
