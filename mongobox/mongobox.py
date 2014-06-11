@@ -145,7 +145,10 @@ class MongoBox(object):
             finally:
                 s.close()
 
-        self.stop()
+        try:
+          self.stop()
+        except:
+          pass
         return False
 
     def __enter__(self):
