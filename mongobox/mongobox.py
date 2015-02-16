@@ -31,7 +31,7 @@ START_CHECK_ATTEMPTS = 200
 
 class MongoBox(object):
     def __init__(self, mongod_bin=None, port=None,
-                 log_path=None, db_path=None, scripting=False,
+                 log_path=None, db_path=None, scripting=True,
                  prealloc=False, auth=False,
                  dump_file=None):
 
