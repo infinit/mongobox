@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 
-import os
-import tempfile
 import copy
-import subprocess
-import time
-import sys
+import datetime
+import os
 import shutil
 import socket
+import subprocess
+import sys
+import tempfile
+import time
 
 from .utils import find_executable, get_free_port
 
@@ -25,8 +26,6 @@ DEFAULT_ARGS = [
     # for tests, can causes failures in jenkins
     "--nojournal",
 ]
-STARTUP_TIME = 0.4
-START_CHECK_ATTEMPTS = 200
 
 
 class MongoBox(object):
@@ -87,9 +86,11 @@ class MongoBox(object):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
         )
-
-        ok = self._wait_till_started()
-        if ok and self.dump_file:
+        delay = datetime.timedelta(seconds = 15)
+        if not self._wait_till_started(delay):
+            raise Exception(
+                'mongo server did not start after %s' % delay)
+        if self.dump_file:
           output_file = tempfile.NamedTemporaryFile(mode = 'w+', delete = False)
           subprocess.check_call(['mongorestore',
                                  '--port', str(self.port), self.dump_file],
@@ -100,7 +101,6 @@ class MongoBox(object):
           errs = list(errs)
           if len(errs):
             raise Exception('mongorestore errors:' + '\n'.join(errs))
-        return ok
 
     def stop(self):
         if not self.process:
@@ -131,9 +131,14 @@ class MongoBox(object):
         except AttributeError:
             return pymongo.Connection(port=self.port)
 
-    def _wait_till_started(self):
+    def _wait_till_started(self, delay):
+        deadline = datetime.datetime.now() + delay
         attempts = 0
-        while self.process.poll() is None and attempts < START_CHECK_ATTEMPTS:
+        while datetime.datetime.now() < deadline:
+            if self.process.poll() is not None:
+                raise Exception(
+                    'mongo server stopped during startup '
+                    'with exit code %s' % self.process.returncode)
             attempts += 1
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
@@ -144,7 +149,6 @@ class MongoBox(object):
                     time.sleep(0.25)
             finally:
                 s.close()
-
         try:
           self.stop()
         except:
