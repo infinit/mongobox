@@ -27,6 +27,8 @@ DEFAULT_ARGS = [
     "--nojournal",
 ]
 
+class PortAlreadyUsed(Exception):
+    pass
 
 class MongoBox(object):
     def __init__(self, mongod_bin=None, port=None,
@@ -81,15 +83,20 @@ class MongoBox(object):
         if not self.prealloc:
             args.append("--noprealloc")
 
-        self.process = subprocess.Popen(
-            args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
-        )
-        delay = datetime.timedelta(seconds = 15)
-        if not self._wait_till_started(delay):
-            raise Exception(
-                'mongo server did not start after %s' % delay)
+        while True:
+            self.process = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT
+            )
+            delay = datetime.timedelta(seconds = 15)
+            try:
+                if not self._wait_till_started(delay):
+                    raise Exception(
+                    'mongo server did not start after %s' % delay)
+            except PortAlreadyUsed:
+                continue
+            break
         if self.dump_file:
           output_file = tempfile.NamedTemporaryFile(mode = 'w+', delete = False)
           subprocess.check_call(['mongorestore',
@@ -136,9 +143,12 @@ class MongoBox(object):
         attempts = 0
         while datetime.datetime.now() < deadline:
             if self.process.poll() is not None:
-                raise Exception(
-                    'mongo server stopped during startup '
-                    'with exit code %s' % self.process.returncode)
+                if self.process.returncode == 48:
+                    raise PortAlreadyUsed()
+                else:
+                    raise Exception(
+                        'mongo server stopped during startup '
+                        'with exit code %s' % self.process.returncode)
             attempts += 1
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
